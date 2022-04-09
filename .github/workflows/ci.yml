@@ -80,7 +80,7 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     strategy:
       # If one platform fails, allow the rest to keep testing if `CI-no-fail-fast` label is present
-      fail-fast: ${{ !contains(github.event.pull_request.labels.*.name, 'CI-no-fail-fast') }}
+      fail-fast: false
       matrix:
         rust: [stable]
         python-version: [3.6, 3.7, 3.8, 3.9, "3.10", pypy-3.6, pypy-3.7, pypy-3.8, pypy-3.9]
