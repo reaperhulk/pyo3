@@ -4,7 +4,7 @@ use codspeed_criterion_compat::{criterion_group, criterion_main, Bencher, Criter
 
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
-use pyo3::types::IntoPyDict;
+use pyo3::types::{IntoPyDict, PyTuple};
 
 macro_rules! test_module {
     ($py:ident, $code:literal) => {
@@ -76,6 +76,35 @@ fn bench_call_one_arg(b: &mut Bencher<'_>) {
         b.iter(|| {
             for _ in 0..1000 {
                 black_box(foo_module).call1((&arg,)).unwrap();
+            }
+        });
+    })
+}
+
+fn bench_call_empty_args(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let module = test_module!(py, "def foo(): pass");
+
+        let foo_module = &module.getattr("foo").unwrap();
+
+        b.iter(|| {
+            for _ in 0..1000 {
+                black_box(foo_module).call1(()).unwrap();
+            }
+        });
+    })
+}
+
+fn bench_call_pytuple(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let module = test_module!(py, "def foo(a, b, c): pass");
+
+        let foo_module = &module.getattr("foo").unwrap();
+        let args = PyTuple::new(py, [1, 2, 3]).unwrap();
+
+        b.iter(|| {
+            for _ in 0..1000 {
+                black_box(foo_module).call1(&args).unwrap();
             }
         });
     })
@@ -183,15 +212,64 @@ class Foo:
     })
 }
 
+fn bench_call_method_empty_args(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let module = test_module!(
+            py,
+            "
+class Foo:
+    def foo(self):
+        pass
+"
+        );
+
+        let foo_module = &module.getattr("Foo").unwrap().call0().unwrap();
+        let meth = "foo".into_pyobject(py).unwrap();
+
+        b.iter(|| {
+            for _ in 0..1000 {
+                black_box(foo_module).call_method1(&meth, ()).unwrap();
+            }
+        });
+    })
+}
+
+fn bench_call_method_pytuple(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let module = test_module!(
+            py,
+            "
+class Foo:
+    def foo(self, a, b, c):
+        pass
+"
+        );
+
+        let foo_module = &module.getattr("Foo").unwrap().call0().unwrap();
+        let meth = "foo".into_pyobject(py).unwrap();
+        let args = PyTuple::new(py, [1, 2, 3]).unwrap();
+
+        b.iter(|| {
+            for _ in 0..1000 {
+                black_box(foo_module).call_method1(&meth, &args).unwrap();
+            }
+        });
+    })
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("call_0", bench_call_0);
     c.bench_function("call_1", bench_call_1);
     c.bench_function("call", bench_call);
     c.bench_function("call_one_arg", bench_call_one_arg);
+    c.bench_function("call_empty_args", bench_call_empty_args);
+    c.bench_function("call_pytuple", bench_call_pytuple);
     c.bench_function("call_method_0", bench_call_method_0);
     c.bench_function("call_method_1", bench_call_method_1);
     c.bench_function("call_method", bench_call_method);
     c.bench_function("call_method_one_arg", bench_call_method_one_arg);
+    c.bench_function("call_method_empty_args", bench_call_method_empty_args);
+    c.bench_function("call_method_pytuple", bench_call_method_pytuple);
 }
 
 criterion_group!(benches, criterion_benchmark);
