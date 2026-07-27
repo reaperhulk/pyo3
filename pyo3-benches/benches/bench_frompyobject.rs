@@ -39,6 +39,14 @@ fn list_via_extract(b: &mut Bencher<'_>) {
     })
 }
 
+fn list_to_vec_u8(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let any = PyList::new(py, 0..100u8).unwrap().into_any();
+
+        b.iter(|| black_box(&any).extract::<Vec<u8>>().unwrap());
+    })
+}
+
 fn not_a_list_via_cast(b: &mut Bencher<'_>) {
     Python::attach(|py| {
         let any = PyString::new(py, "foobar").into_any();
@@ -124,6 +132,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("list_via_extract", list_via_extract);
 
+    c.bench_function("list_to_vec_u8", list_to_vec_u8);
     c.bench_function("not_a_list_via_cast", not_a_list_via_cast);
     c.bench_function("not_a_list_via_extract", not_a_list_via_extract);
     c.bench_function("not_a_list_via_extract_enum", not_a_list_via_extract_enum);

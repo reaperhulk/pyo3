@@ -98,6 +98,14 @@ fn extract_float_extract_success(bench: &mut Bencher<'_>) {
     });
 }
 
+fn extract_float_from_int(bench: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let int = 42i64.into_pyobject(py).unwrap().into_any();
+
+        bench.iter(|| black_box(&int).extract::<f64>().unwrap());
+    });
+}
+
 fn extract_float_extract_fail(bench: &mut Bencher<'_>) {
     Python::attach(|py| {
         let d = PyDict::new(py).into_any();
@@ -146,6 +154,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         extract_float_extract_success,
     );
     c.bench_function("extract_float_extract_fail", extract_float_extract_fail);
+    c.bench_function("extract_float_from_int", extract_float_from_int);
     c.bench_function(
         "extract_float_cast_success",
         extract_float_cast_success,
