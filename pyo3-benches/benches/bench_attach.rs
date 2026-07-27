@@ -13,9 +13,21 @@ fn bench_dirty_attach(b: &mut Bencher<'_>) {
     b.iter(|| Python::attach(|py| obj.clone_ref(py)));
 }
 
+fn bench_empty_pool_attach(b: &mut Bencher<'_>) {
+    let obj = Python::attach(|py| py.None());
+    // Ensure the reference pool is initialized by dropping a reference on a
+    // detached thread, then flush it so that it is initialized but empty. This
+    // is the steady state of most multithreaded applications.
+    let reference = Python::attach(|py| obj.clone_ref(py));
+    std::thread::spawn(move || drop(reference)).join().unwrap();
+    Python::attach(|_| {});
+    b.iter(|| Python::attach(|_| {}));
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("clean_attach", bench_clean_attach);
     c.bench_function("dirty_attach", bench_dirty_attach);
+    c.bench_function("empty_pool_attach", bench_empty_pool_attach);
 }
 
 criterion_group!(benches, criterion_benchmark);
