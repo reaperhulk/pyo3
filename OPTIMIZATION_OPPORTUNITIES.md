@@ -33,7 +33,12 @@ iteration). What remains clusters around **per-call fixed costs** and
 
 ### Tier 1 — small diffs, low risk, high call-frequency
 
-#### 1.1 Atomic gate before the `ReferencePool` mutex ⭐ top pick
+#### 1.1 Atomic gate before the `ReferencePool` mutex ⭐ top pick — **DONE on this branch**
+
+> **Result (cycle 1):** `empty_pool_attach` 101.2 → 85.8 ns (−15.6%, p<0.01);
+> callgrind 637.6 → 615.2 instructions/attach (−22.4, the lock/unlock pair).
+> `clean_attach` unchanged (p=0.56). Cost: +5.3 instructions on the rare
+> work-queued path (measured 926.0 → 931.2 instr/iter on a dirty-path harness).
 **Where:** `src/internal/state.rs:208-220` (`ReferencePool::drop_deferred_references`),
 called from `AttachGuard::assume()` (`state.rs:161`), i.e. from **every**
 trampoline invocation (`src/impl_/trampoline.rs`) and every `Python::attach`.
