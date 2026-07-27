@@ -974,7 +974,7 @@ fn array_into_tuple<'py, const N: usize>(
 ///
 /// Guarantees that we don't accidentally overflow a `size_t` should this get changed in the future.
 #[cfg(all(not(any(PyPy, GraalPy)), any(not(Py_LIMITED_API), Py_3_12)))]
-const fn with_vectorcall_arguments_offset(n: size_t) -> size_t {
+pub(crate) const fn with_vectorcall_arguments_offset(n: size_t) -> size_t {
     n.checked_add(ffi::PY_VECTORCALL_ARGUMENTS_OFFSET)
         .expect("overflow adding PY_VECTORCALL_ARGUMENTS_OFFSET")
 }
