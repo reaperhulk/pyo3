@@ -448,6 +448,7 @@ pub(crate) fn pylong_visit_digits<R>(
 #[cfg(any(not(Py_LIMITED_API), Py_3_15))]
 mod fast_128bit_int_conversion {
     use super::*;
+    use crate::types::any::PyAnyMethods as _;
 
     // for 128bit Integers
     macro_rules! int_convert_128 {
@@ -513,7 +514,17 @@ mod fast_128bit_int_conversion {
                 const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
                 fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<$rust_type, Self::Error> {
-                    let num = nb_index(&ob)?;
+                    let owned;
+                    // fast path - checking for subclass of `int` just checks a bit in the
+                    // type object; the conversions below accept any `int`, which matches
+                    // `PyNumber_Index` returning `int` inputs unchanged
+                    let num = if ob.is_instance_of::<PyInt>() {
+                        // SAFETY: type was just checked
+                        unsafe { ob.cast_unchecked::<PyInt>() }
+                    } else {
+                        owned = nb_index(&ob)?;
+                        owned.as_borrowed()
+                    };
                     #[cfg(Py_3_14)]
                     {
                         if is_30bit_layout() {
@@ -908,6 +919,31 @@ mod test_128bit_integers {
             let obj = v.into_pyobject(py).unwrap();
             assert_eq!(v, obj.extract::<u128>().unwrap());
             assert!(obj.extract::<i128>().is_err());
+        })
+    }
+
+    #[test]
+    fn test_i128_from_int_subclass() {
+        Python::attach(|py| {
+            py.run(c"class SubInt(int): pass", None, None).unwrap();
+            let obj = py.eval(c"SubInt(42)", None, None).unwrap();
+            assert_eq!(obj.extract::<i128>().unwrap(), 42);
+            assert_eq!(obj.extract::<u128>().unwrap(), 42);
+        })
+    }
+
+    #[test]
+    fn test_i128_from_index_object() {
+        Python::attach(|py| {
+            py.run(
+                c"class HasIndex:\n    def __index__(self): return 42",
+                None,
+                None,
+            )
+            .unwrap();
+            let obj = py.eval(c"HasIndex()", None, None).unwrap();
+            assert_eq!(obj.extract::<i128>().unwrap(), 42);
+            assert_eq!(obj.extract::<u128>().unwrap(), 42);
         })
     }
 
