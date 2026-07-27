@@ -528,10 +528,16 @@ impl CallingConvention {
     pub fn from_signature(signature: &FunctionSignature<'_>) -> Self {
         if signature.python_signature.has_no_args() {
             Self::Noargs
-        } else if signature.python_signature.kwargs.is_none() {
-            Self::Fastcall
-        } else {
+        } else if is_forwarded_args(signature) {
+            // For a plain `(*args, **kwargs)` pass-through signature the
+            // caller-provided tuple can be forwarded without copying, so the
+            // tp_call convention is preferable.
             Self::Varargs
+        } else {
+            // All other signatures (including those with a `**kwargs`
+            // parameter) use METH_FASTCALL to avoid materializing an args
+            // tuple; the kwargs dict is built only when keywords are present.
+            Self::Fastcall
         }
     }
 }
