@@ -4,11 +4,13 @@
 #[cfg(feature = "experimental-inspect")]
 use crate::inspect::{type_hint_subscript, PyStaticExpr};
 use crate::platform::prelude::*;
+#[cfg(not(Py_GIL_DISABLED))]
+use crate::types::{PyList, PyListMethods};
 use crate::{
     conversion::{FromPyObject, FromPyObjectOwned, FromPyObjectSequence, IntoPyObject},
     exceptions::PyTypeError,
     ffi,
-    types::{PyAnyMethods, PySequence, PyString},
+    types::{PyAnyMethods, PySequence, PyString, PyTuple, PyTupleMethods},
     Borrowed, CastError, PyResult, PyTypeInfo,
 };
 use crate::{Bound, PyAny, PyErr, Python};
@@ -72,6 +74,43 @@ where
             return Err(PyTypeError::new_err("Can't extract `str` to `Vec`"));
         }
 
+        // Fast paths for the two most common sequence types, avoiding the
+        // iterator object allocation and per-item `PyIter_Next` calls of the
+        // generic path below. Exact type checks so that subclasses overriding
+        // `__iter__` keep the iterator-protocol behavior.
+        if obj.is_exact_instance_of::<PyTuple>() {
+            // SAFETY: type was just checked
+            let tuple = unsafe { obj.cast_unchecked::<PyTuple>() };
+            let mut v = Vec::with_capacity(tuple.len());
+            // Borrowed items are sound because tuples are immutable, so the
+            // `extract` calls cannot invalidate them.
+            for item in tuple.iter_borrowed() {
+                v.push(item.extract::<T>().map_err(Into::into)?);
+            }
+            return Ok(v);
+        }
+
+        #[cfg(not(Py_GIL_DISABLED))]
+        if obj.is_exact_instance_of::<PyList>() {
+            // SAFETY: type was just checked
+            let list = unsafe { obj.cast_unchecked::<PyList>() };
+            let mut v = Vec::with_capacity(list.len());
+            let mut index = 0;
+            // Re-check the length on every iteration because the `extract`
+            // calls can run arbitrary Python code which may mutate the list;
+            // this matches the semantics of the iterator protocol used by the
+            // generic path.
+            while index < list.len() {
+                // SAFETY: index is in bounds (checked above), and taking an
+                // owned reference keeps the item alive even if the list is
+                // mutated during `extract`.
+                let item = unsafe { list.get_item_unchecked(index) };
+                v.push(item.extract::<T>().map_err(Into::into)?);
+                index += 1;
+            }
+            return Ok(v);
+        }
+
         extract_sequence(obj)
     }
 }
@@ -99,6 +138,42 @@ mod tests {
     use crate::platform::prelude::*;
     use crate::types::{PyAnyMethods, PyBytes, PyBytesMethods, PyList};
     use crate::Python;
+
+    #[test]
+    fn test_vec_from_list_and_tuple() {
+        Python::attach(|py| {
+            let list = py.eval(c"[1, 2, 3]", None, None).unwrap();
+            assert_eq!(list.extract::<Vec<i64>>().unwrap(), [1, 2, 3]);
+
+            let tuple = py.eval(c"(1, 2, 3)", None, None).unwrap();
+            assert_eq!(tuple.extract::<Vec<i64>>().unwrap(), [1, 2, 3]);
+        });
+    }
+
+    #[test]
+    fn test_vec_from_sequence_subclass_honors_custom_iter() {
+        // Subclasses of list/tuple which override __iter__ must go through
+        // the iterator protocol, not the exact-type fast paths.
+        Python::attach(|py| {
+            py.run(
+                c"class WeirdList(list):\n    def __iter__(self): return iter([7, 8])",
+                None,
+                None,
+            )
+            .unwrap();
+            let obj = py.eval(c"WeirdList([1, 2, 3])", None, None).unwrap();
+            assert_eq!(obj.extract::<Vec<i64>>().unwrap(), [7, 8]);
+
+            py.run(
+                c"class WeirdTuple(tuple):\n    def __iter__(self): return iter([9])",
+                None,
+                None,
+            )
+            .unwrap();
+            let obj = py.eval(c"WeirdTuple((1, 2, 3))", None, None).unwrap();
+            assert_eq!(obj.extract::<Vec<i64>>().unwrap(), [9]);
+        });
+    }
 
     #[test]
     fn test_vec_intopyobject_impl() {
