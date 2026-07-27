@@ -89,7 +89,12 @@ objects; compare `as_ptr()` first, fall back to the current path on miss.
 **Measure with:** `bench_call.rs` extended with kwargs-heavy cases (gap: none
 exist today).
 
-#### 1.4 Fast paths for `()` and tuple args in `call`/`call_method`
+#### 1.4 Fast paths for `()` and tuple args in `call`/`call_method` — **DONE on this branch**
+
+> **Result (cycle 3):** `call_method_empty_args` −45.1%, `call_method_pytuple`
+> −35.5%, `call_empty_args` −13.8%; positional `call_pytuple` unchanged as
+> predicted (PyObject_Call already vectorcalls a tuple's array). Untouched
+> Rust-tuple paths confirmed unchanged via callgrind.
 **Where:** `src/call.rs:71-101`.
 
 - `obj.call1(())` builds an empty tuple + `PyObject_Call`, while `call0()` uses
