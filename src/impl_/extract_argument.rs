@@ -457,6 +457,13 @@ pub struct FunctionDescription {
     pub positional_only_parameters: usize,
     pub required_positional_parameters: usize,
     pub keyword_only_parameters: &'static [KeywordOnlyParameterDescription],
+    /// Interned counterparts of `positional_parameter_names`, used to match
+    /// keyword argument names by pointer comparison before falling back to
+    /// string comparison. Either empty or exactly parallel to
+    /// `positional_parameter_names`.
+    pub interned_positional_parameter_names: &'static [crate::sync::Interned],
+    /// As above, for `keyword_only_parameters`.
+    pub interned_keyword_only_parameter_names: &'static [crate::sync::Interned],
 }
 
 impl FunctionDescription {
@@ -646,7 +653,55 @@ impl FunctionDescription {
             num_positional_parameters + self.keyword_only_parameters.len()
         );
         let mut positional_only_keyword_arguments = Vec::new();
-        for (kwarg_name_py, value) in kwargs {
+        'kwarg_loop: for (kwarg_name_py, value) in kwargs {
+            // Fast path: keyword names at Python call sites are interned by
+            // the compiler, so a pointer comparison against our interned
+            // parameter names usually succeeds without any string decoding.
+            // (Pointer equality implies string equality; inequality falls
+            // through to the string-comparison path below.)
+            #[cfg(any(Py_3_10, not(Py_LIMITED_API)))]
+            if K::INTERNED_NAME_MATCH {
+                let py = kwarg_name_py.py();
+                let name_ptr = kwarg_name_py.as_ptr();
+
+                for (i, interned) in self
+                    .interned_keyword_only_parameter_names
+                    .iter()
+                    .enumerate()
+                {
+                    if interned.get(py).as_ptr() == name_ptr {
+                        if output[i + num_positional_parameters]
+                            .replace(value)
+                            .is_some()
+                        {
+                            return Err(self.multiple_values_for_argument(
+                                self.keyword_only_parameters[i].name,
+                            ));
+                        }
+                        continue 'kwarg_loop;
+                    }
+                }
+
+                for (i, interned) in self.interned_positional_parameter_names.iter().enumerate() {
+                    if interned.get(py).as_ptr() == name_ptr {
+                        let param_name = self.positional_parameter_names[i];
+                        if i < self.positional_only_parameters {
+                            // If accepting **kwargs, then it's allowed for the name of the
+                            // kwarg to conflict with a positional-only argument - the value
+                            // will go into **kwargs anyway.
+                            if K::handle_varkeyword(varkeywords, kwarg_name_py, value, self)
+                                .is_err()
+                            {
+                                positional_only_keyword_arguments.push(param_name);
+                            }
+                        } else if output[i].replace(value).is_some() {
+                            return Err(self.multiple_values_for_argument(param_name));
+                        }
+                        continue 'kwarg_loop;
+                    }
+                }
+            }
+
             // Safety: All keyword arguments should be UTF-8 strings, but if it's not, `.to_str()`
             // will return an error anyway.
             #[cfg(any(Py_3_10, not(Py_LIMITED_API)))]
@@ -957,6 +1012,11 @@ mod varkeywords_halder {
 /// A trait used to control whether to accept varkeywords in FunctionDescription::extract_argument_(method) functions.
 pub trait VarkeywordsHandler<'py>: varkeywords_halder::Sealed {
     type Varkeywords: Default;
+    /// Whether to try matching keyword names against the interned parameter
+    /// names by pointer before falling back to string comparison. Only
+    /// enabled when unexpected keywords are an error, so that the miss cost
+    /// of the pointer scan is confined to (cold) error paths.
+    const INTERNED_NAME_MATCH: bool;
     fn handle_varkeyword(
         varkeywords: &mut Self::Varkeywords,
         name: PyArg<'py>,
@@ -970,6 +1030,7 @@ pub struct NoVarkeywords;
 
 impl<'py> VarkeywordsHandler<'py> for NoVarkeywords {
     type Varkeywords = ();
+    const INTERNED_NAME_MATCH: bool = true;
     #[inline]
     fn handle_varkeyword(
         _varkeywords: &mut Self::Varkeywords,
@@ -986,6 +1047,7 @@ pub struct DictVarkeywords;
 
 impl<'py> VarkeywordsHandler<'py> for DictVarkeywords {
     type Varkeywords = Option<Bound<'py, PyDict>>;
+    const INTERNED_NAME_MATCH: bool = false;
     #[inline]
     fn handle_varkeyword(
         varkeywords: &mut Self::Varkeywords,
@@ -1037,6 +1099,8 @@ mod tests {
             positional_only_parameters: 0,
             required_positional_parameters: 0,
             keyword_only_parameters: &[],
+            interned_positional_parameter_names: &[],
+            interned_keyword_only_parameter_names: &[],
         };
 
         Python::attach(|py| {
@@ -1068,6 +1132,8 @@ mod tests {
             positional_only_parameters: 0,
             required_positional_parameters: 0,
             keyword_only_parameters: &[],
+            interned_positional_parameter_names: &[],
+            interned_keyword_only_parameter_names: &[],
         };
 
         Python::attach(|py| {
@@ -1099,6 +1165,8 @@ mod tests {
             positional_only_parameters: 0,
             required_positional_parameters: 2,
             keyword_only_parameters: &[],
+            interned_positional_parameter_names: &[],
+            interned_keyword_only_parameter_names: &[],
         };
 
         Python::attach(|py| {

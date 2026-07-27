@@ -111,6 +111,22 @@ pub fn impl_arg_params(
 
     let num_params = positional_parameter_names.len() + keyword_only_parameters.len();
 
+    let interned_positional_parameter_names = positional_parameter_names
+        .iter()
+        .map(|name| quote! { #pyo3_path::sync::Interned::new(#name) });
+    let num_positional_parameter_names = positional_parameter_names.len();
+    let interned_keyword_only_parameter_names = spec
+        .signature
+        .python_signature
+        .keyword_only_parameters
+        .iter()
+        .map(|(name, _)| quote! { #pyo3_path::sync::Interned::new(#name) });
+    let num_keyword_only_parameter_names = spec
+        .signature
+        .python_signature
+        .keyword_only_parameters
+        .len();
+
     let mut option_pos = 0usize;
     let param_conversion = spec
         .signature
@@ -165,13 +181,19 @@ pub fn impl_arg_params(
     // create array of arguments, and then parse
     (
         quote! {
-                const DESCRIPTION: #pyo3_path::impl_::extract_argument::FunctionDescription = #pyo3_path::impl_::extract_argument::FunctionDescription {
+                static INTERNED_POSITIONAL_PARAMETER_NAMES: [#pyo3_path::sync::Interned; #num_positional_parameter_names] =
+                    [#(#interned_positional_parameter_names),*];
+                static INTERNED_KEYWORD_ONLY_PARAMETER_NAMES: [#pyo3_path::sync::Interned; #num_keyword_only_parameter_names] =
+                    [#(#interned_keyword_only_parameter_names),*];
+                static DESCRIPTION: #pyo3_path::impl_::extract_argument::FunctionDescription = #pyo3_path::impl_::extract_argument::FunctionDescription {
                     cls_name: #cls_name,
                     func_name: stringify!(#python_name),
                     positional_parameter_names: &[#(#positional_parameter_names),*],
                     positional_only_parameters: #positional_only_parameters,
                     required_positional_parameters: #required_positional_parameters,
                     keyword_only_parameters: &[#(#keyword_only_parameters),*],
+                    interned_positional_parameter_names: &INTERNED_POSITIONAL_PARAMETER_NAMES,
+                    interned_keyword_only_parameter_names: &INTERNED_KEYWORD_ONLY_PARAMETER_NAMES,
                 };
                 let mut #args_array = [::std::option::Option::None; #num_params];
                 let (_args, _kwargs) = #extract_expression;
