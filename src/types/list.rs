@@ -245,6 +245,7 @@ pub trait PyListMethods<'py>: crate::sealed::Sealed {
 
 impl<'py> PyListMethods<'py> for Bound<'py, PyList> {
     /// Returns the length of the list.
+    #[inline]
     fn len(&self) -> usize {
         let size = cfg_select! {
             // SAFETY: self is valid list object
@@ -282,6 +283,7 @@ impl<'py> PyListMethods<'py> for Bound<'py, PyList> {
     ///     assert_eq!(obj.unwrap().extract::<i32>().unwrap(), 2);
     /// });
     /// ```
+    #[inline]
     fn get_item(&self, index: usize) -> PyResult<Bound<'py, PyAny>> {
         unsafe {
             ffi::compat::PyList_GetItemRef(self.as_ptr(), index as Py_ssize_t)
@@ -289,6 +291,7 @@ impl<'py> PyListMethods<'py> for Bound<'py, PyList> {
         }
     }
 
+    #[inline]
     unsafe fn get_item_unchecked(&self, index: usize) -> Bound<'py, PyAny> {
         cfg_select! {
             // SAFETY:

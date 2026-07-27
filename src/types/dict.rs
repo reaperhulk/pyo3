@@ -264,6 +264,7 @@ impl<'py> PyDictMethods<'py> for Bound<'py, PyDict> {
         unsafe { ffi::PyDict_Clear(self.as_ptr()) }
     }
 
+    #[inline]
     fn len(&self) -> usize {
         dict_len(self) as usize
     }

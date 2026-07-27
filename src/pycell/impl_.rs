@@ -63,6 +63,7 @@ struct BorrowFlag(AtomicUsize);
 impl BorrowFlag {
     pub(crate) const UNUSED: usize = 0;
     const HAS_MUTABLE_BORROW: usize = usize::MAX;
+    #[inline]
     fn increment(&self) -> Result<(), PyBorrowError> {
         // relaxed is OK because we will read the value again in the compare_exchange
         let mut value = self.0.load(Ordering::Relaxed);
@@ -91,6 +92,7 @@ impl BorrowFlag {
             }
         }
     }
+    #[inline]
     fn decrement(&self) {
         // relaxed load is OK but decrements must happen-before the next read
         self.0.fetch_sub(1, Ordering::Release);
@@ -148,14 +150,17 @@ impl PyClassBorrowChecker for BorrowChecker {
         Self(BorrowFlag(AtomicUsize::new(BorrowFlag::UNUSED)))
     }
 
+    #[inline]
     fn try_borrow(&self) -> Result<(), PyBorrowError> {
         self.0.increment()
     }
 
+    #[inline]
     fn release_borrow(&self) {
         self.0.decrement();
     }
 
+    #[inline]
     fn try_borrow_mut(&self) -> Result<(), PyBorrowMutError> {
         let flag = &self.0;
         match flag.0.compare_exchange(
@@ -175,6 +180,7 @@ impl PyClassBorrowChecker for BorrowChecker {
         }
     }
 
+    #[inline]
     fn release_borrow_mut(&self) {
         self.0 .0.store(BorrowFlag::UNUSED, Ordering::Release)
     }

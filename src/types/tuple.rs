@@ -253,6 +253,7 @@ pub trait PyTupleMethods<'py>: crate::sealed::Sealed {
 }
 
 impl<'py> PyTupleMethods<'py> for Bound<'py, PyTuple> {
+    #[inline]
     fn len(&self) -> usize {
         unsafe {
             #[cfg(not(any(Py_LIMITED_API, PyPy, GraalPy)))]
@@ -284,6 +285,7 @@ impl<'py> PyTupleMethods<'py> for Bound<'py, PyTuple> {
         }
     }
 
+    #[inline]
     fn get_item(&self, index: usize) -> PyResult<Bound<'py, PyAny>> {
         self.get_borrowed_item(index).map(Borrowed::to_owned)
     }
@@ -296,6 +298,7 @@ impl<'py> PyTupleMethods<'py> for Bound<'py, PyTuple> {
         unsafe { self.get_borrowed_item_unchecked(index).to_owned() }
     }
 
+    #[inline]
     unsafe fn get_borrowed_item_unchecked<'a>(&'a self, index: usize) -> Borrowed<'a, 'py, PyAny> {
         unsafe { self.as_borrowed().get_borrowed_item_unchecked(index) }
     }
