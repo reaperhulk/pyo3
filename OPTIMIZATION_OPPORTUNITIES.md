@@ -54,7 +54,12 @@ sets it. ~15 lines, zero API impact.
 **Measure with:** `bench_attach.rs` (after forcing pool init), `bench_call.rs`,
 `bench_pyclass.rs`.
 
-#### 1.2 `#[inline]` on small non-generic hot functions
+#### 1.2 `#[inline]` on small non-generic hot functions — **DONE on this branch**
+
+> **Result (cycle 6):** 39 `#[inline]` additions. Wall-clock criterion was
+> noise-dominated; callgrind per-operation instruction counts:
+> `extract::<i64>` −28%, `extract::<f64>` −52%, `list.get_item` −41%,
+> `tuple.get_item` −8%, pyclass `borrow()` −27%, `dict.len` unchanged.
 Lifetime-only-generic impls compile into the pyo3 rlib; without (thin-)LTO,
 downstream extension crates pay a real function call for 1–5 instruction bodies.
 Confirmed missing `#[inline]` on:
@@ -73,7 +78,15 @@ Confirmed missing `#[inline]` on:
 ~30 one-line changes, no risk. Note: benches link pyo3 in-workspace so this is
 best demonstrated via a downstream-crate benchmark or by inspecting codegen.
 
-#### 1.3 Interned-pointer keyword-argument matching
+#### 1.3 Interned-pointer keyword-argument matching — **DONE (scoped) on this branch**
+
+> **Result (cycle 8):** enabled for functions *without* `**kwargs` (misses are
+> cold error paths there): −11.4% per call with 3 matched keywords
+> (1851.3 → 1640.8 instructions), ~70 instructions saved per matched keyword.
+> For `**kwargs` functions the pointer-scan miss cost (+88 instr/kwarg,
+> measured) made it a bad trade, so they are const-gated to the old path.
+> Revisit with a per-call hoisted pointer table if `**kwargs` coverage is
+> wanted.
 **Where:** `src/impl_/extract_argument.rs:649-721` (`handle_kwargs` +
 `find_keyword_parameter_*`); descriptions built in
 `pyo3-macros-backend/src/params.rs:168-175`.
@@ -121,7 +134,12 @@ input is already an exact `int`. Add a `cast::<PyInt>()` fast path first.
 
 ### Tier 2 — medium diffs or medium risk, clear wins
 
-#### 2.1 `Vec<T>` extraction fast paths for `list`/`tuple`
+#### 2.1 `Vec<T>` extraction fast paths for `list`/`tuple` — **DONE on this branch**
+
+> **Result (cycle 5):** exact-type fast paths (subclasses overriding
+> `__iter__` keep iterator semantics; list path re-checks length per step and
+> is disabled on free-threaded builds). `tuple_to_vec_i64` −48.5%,
+> `list_to_vec_i64` −26.3%, `list_to_vec_u8` −32.8% (100 elements).
 **Where:** `src/conversions/std/vec.rs:66-94`.
 
 For all `T` except `u8`, extracting from a `list` or `tuple` uses
@@ -139,7 +157,13 @@ Expected ~1.5–3× on `Vec<i64>`/`Vec<String>` from list/tuple. ~40–70 lines.
 **Bench gap:** `bench_frompyobject.rs` only covers `Vec<u8>`; add
 `vec_int_from_list`/`from_tuple` first.
 
-#### 2.2 Map extraction: drop 2 incref/decref per entry
+#### 2.2 Map extraction: drop 2 incref/decref per entry — **SKIPPED**
+
+> **Decision:** unlike the kwargs path (no user code between `PyDict_Next`
+> steps), `K::extract`/`V::extract` run arbitrary Python mid-iteration, so
+> borrowed pairs can dangle if that code mutates the dict. Changing public
+> extraction to `iter_borrowed` alters safety semantics and needs an upstream
+> design discussion; `locked_for_each` doesn't remove the refcounting.
 **Where:** `src/conversions/std/map.rs:118-152` (also `hashbrown.rs`, `indexmap.rs`).
 
 `dict.iter()` clones key and value per entry (`src/types/dict.rs:606-607`);
@@ -147,7 +171,13 @@ the refcount-free `BorrowedDictIter` (`dict.rs:824-891`) is exactly what kwargs
 handling already uses. Expected ~10–25% on the existing `extract_hashmap`
 bench. ~15 lines; needs the same mutation-safety argument as kwargs.
 
-#### 2.3 Lazy `CastError` classinfo
+#### 2.3 Lazy `CastError` classinfo — **DONE (site fixes) on this branch**
+
+> **Result (cycle 4):** `CastError::new` is public API with an eager `Bound`
+> classinfo, so instead the hot probe sites were fixed directly
+> (`is_instance_of` + `cast_unchecked` in f64/u8-sequence/bool extract).
+> `extract_float_from_int` −6.7%, `extract_float_extract_success` −16.7%;
+> callgrind confirms −4.4 instructions (the CastError construction).
 **Where:** `src/instance.rs:1063` / `src/err/cast_error.rs:14-20`.
 
 Failed `cast`/`cast_exact` probes eagerly build `T::type_object(py).into_any()`
@@ -158,7 +188,12 @@ discards the error — which happens on the hot fallback paths of
 `HashSet`, and the pre-3.10 int path. Store a `fn(Python) -> Bound<PyAny>`
 instead; fixes every probe site at once. ~30 lines.
 
-#### 2.4 Non-allocating `PyErr` for static string messages
+#### 2.4 Non-allocating `PyErr` for static string messages — **DEFERRED**
+
+> **Decision:** `&'static str` reaches `PyErr::new` through the blanket
+> `PyErrArguments` impl; detecting it on stable Rust requires specialization
+> or a new public constructor. Benefit is one allocation per error creation —
+> needs an upstream API-design discussion first.
 **Where:** `src/err/mod.rs:125-137`.
 
 `PyXxxError::new_err("...")` always heap-allocates a boxed closure. Add a
@@ -166,7 +201,13 @@ instead; fixes every probe site at once. ~30 lines.
 `PyErr_SetString`. ~60–100 lines, internal only.
 **Measure with:** existing `bench_err.rs`.
 
-#### 2.5 METH_FASTCALL for `**kwargs`-taking functions
+#### 2.5 METH_FASTCALL for `**kwargs`-taking functions — **DONE on this branch**
+
+> **Result (cycle 7):** positional calls −33% (620.8 → 414.9 instr), Python
+> keyword-literal calls −32% (3344.7 → 2279.2 instr); dict-splat `f(**d)`
+> +13% (CPython flattens the dict and PyO3 rebuilds it) — the same trade
+> CPython makes for its own builtins. `(*args, **kwargs)` pass-through keeps
+> tp_call.
 **Where:** `pyo3-macros-backend/src/method.rs:528-536`.
 
 Any signature with `**kwargs` compiles as `METH_VARARGS|METH_KEYWORDS`, so
@@ -176,7 +217,12 @@ builds the kwargs dict only when keywords are present). Keep Varargs only for
 the `(*args, **kwargs)` pass-through case (`is_forwarded_args`). ~10 lines +
 benches to confirm the kwargs-present path doesn't regress.
 
-#### 2.6 Freelist: `try_lock` fallback
+#### 2.6 Freelist: `try_lock` fallback — **SKIPPED (unmeasurable here)**
+
+> **Decision:** the benefit is contention avoidance on free-threaded builds;
+> on GIL builds the lock is always uncontended so `try_lock` is cost-neutral.
+> This container has no free-threaded interpreter to measure with — do this
+> alongside free-threaded CI benchmarking.
 **Where:** `src/impl_/pyclass.rs:968-1020`.
 
 `#[pyclass(freelist = N)]` takes a blocking `Mutex` on every alloc/dealloc; on
