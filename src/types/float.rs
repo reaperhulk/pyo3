@@ -3,6 +3,7 @@ use crate::conversion::IntoPyObject;
 use crate::inspect::PyStaticExpr;
 #[cfg(feature = "experimental-inspect")]
 use crate::type_object::PyTypeInfo;
+use crate::types::any::PyAnyMethods as _;
 use crate::{
     ffi, ffi_ptr_ext::FfiPtrExt, instance::Bound, Borrowed, FromPyObject, PyAny, PyErr, Python,
 };
@@ -133,8 +134,9 @@ impl<'py> FromPyObject<'_, 'py> for f64 {
         // we have exactly a `float` object (it's not worth going through
         // `isinstance` machinery for subclasses).
         #[cfg(not(Py_LIMITED_API))]
-        if let Ok(float) = obj.cast_exact::<PyFloat>() {
-            return Ok(float.value());
+        if obj.is_exact_instance_of::<PyFloat>() {
+            // SAFETY: type was just checked
+            return Ok(unsafe { obj.cast_unchecked::<PyFloat>() }.value());
         }
 
         let v = unsafe { ffi::PyFloat_AsDouble(obj.as_ptr()) };

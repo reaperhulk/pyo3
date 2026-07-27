@@ -10,6 +10,7 @@ use crate::platform::prelude::*;
 use crate::py_result_ext::PyResultExt;
 #[cfg(feature = "experimental-inspect")]
 use crate::type_object::PyTypeInfo;
+use crate::types::any::PyAnyMethods as _;
 use crate::types::{PyByteArray, PyByteArrayMethods, PyBytes, PyInt};
 use crate::{exceptions, ffi, Borrowed, Bound, FromPyObject, PyAny, PyErr, PyResult, Python};
 use core::convert::Infallible;
@@ -259,10 +260,18 @@ impl<'py> FromPyObject<'_, 'py> for u8 {
         obj: Borrowed<'_, 'py, PyAny>,
         _: crate::conversion::private::Token,
     ) -> Option<impl FromPyObjectSequence<Target = u8>> {
-        if let Ok(bytes) = obj.cast::<PyBytes>() {
-            Some(BytesSequenceExtractor::Bytes(bytes))
-        } else if let Ok(byte_array) = obj.cast::<PyByteArray>() {
-            Some(BytesSequenceExtractor::ByteArray(byte_array))
+        // `is_instance_of` probes avoid constructing a `CastError` (which
+        // eagerly creates the classinfo object) on each miss.
+        if obj.is_instance_of::<PyBytes>() {
+            // SAFETY: type was just checked
+            Some(BytesSequenceExtractor::Bytes(unsafe {
+                obj.cast_unchecked()
+            }))
+        } else if obj.is_instance_of::<PyByteArray>() {
+            // SAFETY: type was just checked
+            Some(BytesSequenceExtractor::ByteArray(unsafe {
+                obj.cast_unchecked()
+            }))
         } else {
             None
         }
@@ -448,7 +457,6 @@ pub(crate) fn pylong_visit_digits<R>(
 #[cfg(any(not(Py_LIMITED_API), Py_3_15))]
 mod fast_128bit_int_conversion {
     use super::*;
-    use crate::types::any::PyAnyMethods as _;
 
     // for 128bit Integers
     macro_rules! int_convert_128 {

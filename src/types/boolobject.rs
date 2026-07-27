@@ -193,10 +193,10 @@ impl FromPyObject<'_, '_> for bool {
     const INPUT_TYPE: PyStaticExpr = PyBool::TYPE_HINT;
 
     fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
-        let err = match obj.cast::<PyBool>() {
-            Ok(obj) => return Ok(obj.is_true()),
-            Err(err) => err,
-        };
+        if obj.is_instance_of::<PyBool>() {
+            // SAFETY: type was just checked
+            return Ok(unsafe { obj.cast_unchecked::<PyBool>() }.is_true());
+        }
 
         let is_numpy_bool = {
             let ty = obj.get_type();
@@ -242,7 +242,11 @@ impl FromPyObject<'_, '_> for bool {
             }
         }
 
-        Err(err.into())
+        Err(crate::err::CastError::new(
+            obj,
+            <PyBool as crate::PyTypeCheck>::classinfo_object(obj.py()),
+        )
+        .into())
     }
 }
 
