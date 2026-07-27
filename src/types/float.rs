@@ -57,6 +57,7 @@ pyobject_native_type!(
 
 impl PyFloat {
     /// Creates a new Python `float` object.
+    #[inline]
     pub fn new(py: Python<'_>, val: c_double) -> Bound<'_, PyFloat> {
         unsafe {
             ffi::PyFloat_FromDouble(val)
@@ -128,6 +129,7 @@ impl<'py> FromPyObject<'_, 'py> for f64 {
 
     // PyFloat_AsDouble returns -1.0 upon failure
     #[allow(clippy::float_cmp)]
+    #[inline]
     fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         // On non-limited API, .value() uses PyFloat_AS_DOUBLE which
         // allows us to have an optimized fast path for the case when
@@ -185,6 +187,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for f32 {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyFloat::TYPE_HINT;
 
+    #[inline]
     fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         Ok(obj.extract::<f64>()? as f32)
     }

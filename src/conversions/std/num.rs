@@ -33,6 +33,7 @@ macro_rules! int_fits_larger_int {
             #[cfg(feature = "experimental-inspect")]
             const OUTPUT_TYPE: PyStaticExpr = <$larger_type>::OUTPUT_TYPE;
 
+            #[inline]
             fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                 (self as $larger_type).into_pyobject(py)
             }
@@ -46,6 +47,7 @@ macro_rules! int_fits_larger_int {
             #[cfg(feature = "experimental-inspect")]
             const OUTPUT_TYPE: PyStaticExpr = <$larger_type>::OUTPUT_TYPE;
 
+            #[inline]
             fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                 (*self).into_pyobject(py)
             }
@@ -57,6 +59,7 @@ macro_rules! int_fits_larger_int {
             #[cfg(feature = "experimental-inspect")]
             const INPUT_TYPE: PyStaticExpr = <$larger_type>::INPUT_TYPE;
 
+            #[inline]
             fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
                 let val: $larger_type = obj.extract()?;
                 <$rust_type>::try_from(val)
@@ -101,6 +104,7 @@ macro_rules! int_convert_u64_or_i64 {
             #[cfg(feature = "experimental-inspect")]
             const OUTPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+            #[inline]
             fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                 unsafe {
                     Ok($pylong_from_ll_or_ull(self)
@@ -128,6 +132,7 @@ macro_rules! int_convert_u64_or_i64 {
             #[cfg(feature = "experimental-inspect")]
             const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+            #[inline]
             fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<$rust_type, Self::Error> {
                 extract_int!(obj, !0, $pylong_as_ll_or_ull, $force_index_call)
             }
@@ -145,6 +150,7 @@ macro_rules! int_fits_c_long {
             #[cfg(feature = "experimental-inspect")]
             const OUTPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+            #[inline]
             fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                 unsafe {
                     Ok(ffi::PyLong_FromLong(self as c_long)
@@ -174,6 +180,7 @@ macro_rules! int_fits_c_long {
             #[cfg(feature = "experimental-inspect")]
             const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+            #[inline]
             fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
                 let val: c_long = extract_int!(obj, -1, ffi::PyLong_AsLong)?;
                 <$rust_type>::try_from(val)
@@ -191,6 +198,7 @@ impl<'py> IntoPyObject<'py> for u8 {
     #[cfg(feature = "experimental-inspect")]
     const OUTPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+    #[inline]
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         unsafe {
             Ok(ffi::PyLong_FromLong(self as c_long)
@@ -223,6 +231,7 @@ impl<'py> IntoPyObject<'py> for &'_ u8 {
     #[cfg(feature = "experimental-inspect")]
     const OUTPUT_TYPE: PyStaticExpr = u8::OUTPUT_TYPE;
 
+    #[inline]
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         u8::into_pyobject(*self, py)
     }
@@ -250,6 +259,7 @@ impl<'py> FromPyObject<'_, 'py> for u8 {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+    #[inline]
     fn extract(obj: Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
         let val: c_long = extract_int!(obj, -1, ffi::PyLong_AsLong)?;
         u8::try_from(val).map_err(|e| exceptions::PyOverflowError::new_err(e.to_string()))
@@ -469,6 +479,7 @@ mod fast_128bit_int_conversion {
                 #[cfg(feature = "experimental-inspect")]
                 const OUTPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+                #[inline]
                 fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                     #[cfg(Py_3_14)]
                     {
@@ -521,6 +532,7 @@ mod fast_128bit_int_conversion {
                 #[cfg(feature = "experimental-inspect")]
                 const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+                #[inline]
                 fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<$rust_type, Self::Error> {
                     let owned;
                     // fast path - checking for subclass of `int` just checks a bit in the
@@ -687,6 +699,7 @@ mod slow_128bit_int_conversion {
                 #[cfg(feature = "experimental-inspect")]
                 const OUTPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+                #[inline]
                 fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
                     let lower = (self as u64).into_pyobject(py)?;
                     let upper = ((self >> SHIFT) as $half_type).into_pyobject(py)?;
@@ -722,6 +735,7 @@ mod slow_128bit_int_conversion {
                 #[cfg(feature = "experimental-inspect")]
                 const INPUT_TYPE: PyStaticExpr = PyInt::TYPE_HINT;
 
+                #[inline]
                 fn extract(ob: Borrowed<'_, '_, PyAny>) -> Result<$rust_type, Self::Error> {
                     let py = ob.py();
                     unsafe {
@@ -797,6 +811,7 @@ macro_rules! nonzero_int_impl {
             #[cfg(feature = "experimental-inspect")]
             const INPUT_TYPE: PyStaticExpr = <$primitive_type>::INPUT_TYPE;
 
+            #[inline]
             fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
                 let val: $primitive_type = obj.extract()?;
                 <$nonzero_type>::try_from(val)

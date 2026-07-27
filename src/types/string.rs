@@ -177,6 +177,7 @@ impl PyString {
     /// Creates a new Python string object.
     ///
     /// Panics if out of memory.
+    #[inline]
     pub fn new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
         let ptr = s.as_ptr().cast();
         let len = s.len() as ffi::Py_ssize_t;

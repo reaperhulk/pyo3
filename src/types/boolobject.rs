@@ -192,6 +192,7 @@ impl FromPyObject<'_, '_> for bool {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyBool::TYPE_HINT;
 
+    #[inline]
     fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         if obj.is_instance_of::<PyBool>() {
             // SAFETY: type was just checked

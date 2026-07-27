@@ -74,6 +74,7 @@ impl<'py> IntoPyObject<'py> for char {
     #[cfg(feature = "experimental-inspect")]
     const OUTPUT_TYPE: PyStaticExpr = String::OUTPUT_TYPE;
 
+    #[inline]
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let mut bytes = [0u8; 4];
         Ok(PyString::new(py, self.encode_utf8(&mut bytes)))
@@ -102,6 +103,7 @@ impl<'py> IntoPyObject<'py> for String {
     #[cfg(feature = "experimental-inspect")]
     const OUTPUT_TYPE: PyStaticExpr = PyString::TYPE_HINT;
 
+    #[inline]
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         Ok(PyString::new(py, &self))
     }
@@ -128,6 +130,7 @@ impl<'a> FromPyObject<'a, '_> for &'a str {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyString::TYPE_HINT;
 
+    #[inline]
     fn extract(ob: Borrowed<'a, '_, PyAny>) -> Result<Self, Self::Error> {
         ob.cast::<PyString>()?.to_str()
     }
@@ -139,6 +142,7 @@ impl<'a> FromPyObject<'a, '_> for Cow<'a, str> {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyString::TYPE_HINT;
 
+    #[inline]
     fn extract(ob: Borrowed<'a, '_, PyAny>) -> Result<Self, Self::Error> {
         ob.cast::<PyString>()?.to_cow()
     }
@@ -152,6 +156,7 @@ impl FromPyObject<'_, '_> for String {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyString::TYPE_HINT;
 
+    #[inline]
     fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         obj.cast::<PyString>()?.to_cow().map(Cow::into_owned)
     }
@@ -163,6 +168,7 @@ impl FromPyObject<'_, '_> for char {
     #[cfg(feature = "experimental-inspect")]
     const INPUT_TYPE: PyStaticExpr = PyString::TYPE_HINT;
 
+    #[inline]
     fn extract(obj: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
         let s = obj.cast::<PyString>()?.to_cow()?;
         let mut iter = s.chars();
