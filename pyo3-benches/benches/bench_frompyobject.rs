@@ -4,7 +4,7 @@ use codspeed_criterion_compat::{criterion_group, criterion_main, Bencher, Criter
 
 use pyo3::{
     prelude::*,
-    types::{PyByteArray, PyBytes, PyList, PyString},
+    types::{PyByteArray, PyBytes, PyList, PyString, PyTuple},
 };
 
 #[derive(FromPyObject)]
@@ -44,6 +44,22 @@ fn list_to_vec_u8(b: &mut Bencher<'_>) {
         let any = PyList::new(py, 0..100u8).unwrap().into_any();
 
         b.iter(|| black_box(&any).extract::<Vec<u8>>().unwrap());
+    })
+}
+
+fn list_to_vec_i64(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let any = PyList::new(py, (0..100).map(i64::from)).unwrap().into_any();
+
+        b.iter(|| black_box(&any).extract::<Vec<i64>>().unwrap());
+    })
+}
+
+fn tuple_to_vec_i64(b: &mut Bencher<'_>) {
+    Python::attach(|py| {
+        let any = PyTuple::new(py, (0..100).map(i64::from)).unwrap().into_any();
+
+        b.iter(|| black_box(&any).extract::<Vec<i64>>().unwrap());
     })
 }
 
@@ -133,6 +149,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("list_via_extract", list_via_extract);
 
     c.bench_function("list_to_vec_u8", list_to_vec_u8);
+    c.bench_function("list_to_vec_i64", list_to_vec_i64);
+    c.bench_function("tuple_to_vec_i64", tuple_to_vec_i64);
     c.bench_function("not_a_list_via_cast", not_a_list_via_cast);
     c.bench_function("not_a_list_via_extract", not_a_list_via_extract);
     c.bench_function("not_a_list_via_extract_enum", not_a_list_via_extract_enum);
