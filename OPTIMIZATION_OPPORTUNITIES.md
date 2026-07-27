@@ -102,7 +102,12 @@ exist today).
 ~40–100 lines, low risk.
 **Measure with:** `bench_call.rs` (`call_method_*` benches exist).
 
-#### 1.5 128-bit int extraction: skip `PyNumber_Index` for exact ints
+#### 1.5 128-bit int extraction: skip `PyNumber_Index` for exact ints — **DONE on this branch**
+
+> **Result (cycle 2):** all ten `extract_*128*` benches improved, −8% to −19%
+> (e.g. `extract_u128_zero` 18.05 → 14.92 ns); callgrind 170.6 → 136.8
+> instructions/extract (−19.8%). Added tests for int-subclass (fast path) and
+> `__index__` object (fallback) extraction.
 **Where:** `src/conversions/std/num.rs:516` (`int_convert_128!`).
 
 Always round-trips through `nb_index` (FFI call + owned ref) even when the
