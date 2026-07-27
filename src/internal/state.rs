@@ -9,6 +9,8 @@ use crate::platform::prelude::*;
 use crate::{ffi, Python};
 
 use core::cell::Cell;
+#[cfg(not(pyo3_disable_reference_pool))]
+use core::sync::atomic::{AtomicBool, Ordering};
 #[cfg_attr(pyo3_disable_reference_pool, allow(unused_imports))]
 use core::{mem, ptr::NonNull};
 #[cfg(not(pyo3_disable_reference_pool))]
@@ -190,6 +192,12 @@ type PyObjVec = Vec<NonNull<ffi::PyObject>>;
 #[cfg(not(pyo3_disable_reference_pool))]
 /// Thread-safe storage for objects which were dec_ref while not attached.
 struct ReferencePool {
+    /// Whether `pending_decrefs` (may) contain any objects. Only modified
+    /// while holding the `pending_decrefs` lock, so it exactly tracks whether
+    /// the vec is non-empty; reads without the lock may be stale, in which
+    /// case the pending decrefs are picked up by a later attach (just as if
+    /// this attach had won the race to lock before the push).
+    dirty: AtomicBool,
     pending_decrefs: Mutex<PyObjVec>,
 }
 
@@ -197,21 +205,32 @@ struct ReferencePool {
 impl ReferencePool {
     const fn new() -> Self {
         Self {
+            dirty: AtomicBool::new(false),
             pending_decrefs: Mutex::new(Vec::new()),
         }
     }
 
     fn register_decref(&self, obj: NonNull<ffi::PyObject>) {
-        self.pending_decrefs.lock().unwrap().push(obj);
+        let mut pending_decrefs = self.pending_decrefs.lock().unwrap();
+        pending_decrefs.push(obj);
+        self.dirty.store(true, Ordering::Relaxed);
     }
 
     fn drop_deferred_references(&self, _py: Python<'_>) {
+        // Fast path: avoid taking the lock on every attach when there is
+        // nothing to do. All data accesses are protected by the mutex; the
+        // flag only gates the lock, so `Relaxed` is sufficient.
+        if !self.dirty.load(Ordering::Relaxed) {
+            return;
+        }
+
         let mut pending_decrefs = self.pending_decrefs.lock().unwrap();
         if pending_decrefs.is_empty() {
             return;
         }
 
         let decrefs = mem::take(&mut *pending_decrefs);
+        self.dirty.store(false, Ordering::Relaxed);
         drop(pending_decrefs);
 
         for ptr in decrefs {
